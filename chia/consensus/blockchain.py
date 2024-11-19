@@ -114,6 +114,8 @@ class Blockchain:
     priority_mutex: PriorityMutex[BlockchainMutexPriority]
     compact_proof_lock: asyncio.Lock
 
+    _log_coins: bool
+
     @staticmethod
     async def create(
         coin_store: CoinStore,
@@ -123,6 +125,7 @@ class Blockchain:
         reserved_cores: int,
         *,
         single_threaded: bool = False,
+        log_coins: bool = False,
     ) -> Blockchain:
         """
         Initializes a blockchain with the BlockRecords from disk, assuming they have all been
@@ -130,6 +133,7 @@ class Blockchain:
         in the consensus constants config.
         """
         self = Blockchain()
+        self._log_coins = log_coins
         # Blocks are validated under high priority, and transactions under low priority. This guarantees blocks will
         # be validated first.
         self.priority_mutex = PriorityMutex.create(priority_type=BlockchainMutexPriority)
@@ -363,6 +367,7 @@ class Blockchain:
             block.height,
             pre_validation_result.conds,
             fork_info,
+            log_coins=self._log_coins,
         )
         if error_code is not None:
             return AddBlockResult.INVALID_BLOCK, error_code, None
@@ -475,6 +480,9 @@ class Blockchain:
             if block_record.prev_hash != peak.header_hash:
                 for coin_record in await self.coin_store.rollback_to_block(fork_info.fork_height):
                     rolled_back_state[coin_record.name] = coin_record
+                if self._log_coins and len(rolled_back_state) > 0:
+                    log.info(f"rolled back {len(rolled_back_state)} coins, to fork height {fork_info.fork_height}")
+                    log.info("changed: %s", ",".join([f"{name}"[0:6] for name in rolled_back_state.keys()]))
 
         # Collects all blocks from fork point to new peak
         records_to_add: list[BlockRecord] = []
@@ -521,6 +529,10 @@ class Blockchain:
                 tx_additions,
                 tx_removals,
             )
+            if self._log_coins and len(tx_removals) > 0:
+                log.info(f"adding new block to coin_store, {len(tx_removals)} spends")
+                log.info("additions: %s", ",".join([f"{add.name().hex()}"[0:6] for add in tx_additions]))
+                log.info("removals: %s", ",".join([f"{rem}"[0:6] for rem in tx_removals]))
 
         # we made it to the end successfully
         # Rollback sub_epoch_summaries
@@ -715,6 +727,7 @@ class Blockchain:
             uint32(prev_height + 1),
             conds,
             fork_info,
+            log_coins=self._log_coins,
         )
 
         if error_code is not None:

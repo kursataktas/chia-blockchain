@@ -257,6 +257,7 @@ class FullNode:
             start_time = time.monotonic()
             reserved_cores = self.config.get("reserved_cores", 0)
             single_threaded = self.config.get("single_threaded", False)
+            log_coins = self.config.get("log_coins", False)
             multiprocessing_start_method = process_config_start_method(config=self.config, log=self.log)
             self.multiprocessing_context = multiprocessing.get_context(method=multiprocessing_start_method)
             self._blockchain = await Blockchain.create(
@@ -266,6 +267,7 @@ class FullNode:
                 blockchain_dir=self.db_path.parent,
                 reserved_cores=reserved_cores,
                 single_threaded=single_threaded,
+                log_coins=log_coins,
             )
 
             self._mempool_manager = MempoolManager(
